@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>미팅 노트 - 부동산 중개업무 솔루션</title>
+    <title>미팅 노트 - 완전한 기능</title>
     <link rel="manifest" href="/public/manifest.json">
     <meta name="theme-color" content="#0F62FE">
-    <link rel="apple-touch-icon" href="/public/favicon.ico">
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -36,7 +35,6 @@
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             z-index: 1000;
-            max-width: calc(100vw - 40px);
         }
         .camera-view {
             position: fixed;
@@ -55,7 +53,6 @@
             object-fit: cover;
             border-radius: 8px;
             cursor: pointer;
-            border: 2px solid #e5e7eb;
         }
     </style>
 </head>
@@ -65,7 +62,7 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
         
-        // 로컬 스토리지 관리
+        // 로컬 스토리지 관리 함수들
         const StorageManager = {
             MEETINGS_KEY: 'field-meeting-data',
             TEMPLATES_KEY: 'field-meeting-templates',
@@ -74,7 +71,7 @@
                 try {
                     localStorage.setItem(StorageManager.MEETINGS_KEY, JSON.stringify(meetings));
                 } catch (error) {
-                    console.error('데이터 저장 실패:', error);
+                    console.error('Failed to save meetings:', error);
                 }
             },
             
@@ -83,7 +80,7 @@
                     const data = localStorage.getItem(StorageManager.MEETINGS_KEY);
                     return data ? JSON.parse(data) : initialMeetings;
                 } catch (error) {
-                    console.error('데이터 로드 실패:', error);
+                    console.error('Failed to load meetings:', error);
                     return initialMeetings;
                 }
             },
@@ -92,17 +89,17 @@
                 try {
                     localStorage.setItem(StorageManager.TEMPLATES_KEY, JSON.stringify(templates));
                 } catch (error) {
-                    console.error('템플릿 저장 실패:', error);
+                    console.error('Failed to save templates:', error);
                 }
             },
             
             loadTemplates: () => {
                 try {
                     const data = localStorage.getItem(StorageManager.TEMPLATES_KEY);
-                    return data ? JSON.parse(data) : messageTemplates;
+                    return data ? JSON.parse(data) : defaultTemplates;
                 } catch (error) {
-                    console.error('템플릿 로드 실패:', error);
-                    return messageTemplates;
+                    console.error('Failed to load templates:', error);
+                    return defaultTemplates;
                 }
             }
         };
@@ -115,9 +112,19 @@
                 // 서비스 워커 등록
                 if ('serviceWorker' in navigator) {
                     navigator.serviceWorker.register('/sw.js')
-                        .then(() => console.log('Service Worker 등록 완료'))
-                        .catch((error) => console.log('Service Worker 등록 실패:', error));
+                        .then((registration) => {
+                            console.log('Service Worker 등록 성공:', registration);
+                        })
+                        .catch((error) => {
+                            console.log('Service Worker 등록 실패:', error);
+                        });
                 }
+
+                // PWA 설치 프롬프트 처리
+                window.addEventListener('beforeinstallprompt', (e) => {
+                    e.preventDefault();
+                    PWAManager.deferredPrompt = e;
+                });
             },
             
             install: async () => {
@@ -136,37 +143,37 @@
             takePhoto: async () => {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: { facingMode: 'environment', width: 1920, height: 1080 } 
+                        video: { facingMode: 'environment' } 
                     });
                     return stream;
                 } catch (error) {
-                    console.error('카메라 접근 실패:', error);
+                    console.error('Camera access failed:', error);
                     return null;
                 }
             },
             
             captureFrame: (video) => {
                 const canvas = document.createElement('canvas');
-                canvas.width = 800;
-                canvas.height = 600;
+                canvas.width = 1920;
+                canvas.height = 1080;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                return canvas.toDataURL('image/jpeg', 0.8);
+                return canvas.toDataURL('image/jpeg', 0.9);
             },
             
-            compressImage: (dataUrl, maxSize = 200) => {
+            resizeImage: (dataUrl, maxWidth = 800) => {
                 return new Promise((resolve) => {
                     const img = new Image();
                     img.onload = () => {
                         const canvas = document.createElement('canvas');
                         const ctx = canvas.getContext('2d');
                         
-                        const ratio = Math.min(maxSize / img.width, maxSize / img.height);
+                        const ratio = Math.min(maxWidth / img.width, maxWidth / img.height);
                         canvas.width = img.width * ratio;
                         canvas.height = img.height * ratio;
                         
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        resolve(canvas.toDataURL('image/jpeg', 0.6));
+                        resolve(canvas.toDataURL('image/jpeg', 0.8));
                     };
                     img.src = dataUrl;
                 });
@@ -196,62 +203,44 @@
             };
             
             lines.forEach((line, index) => {
-                // 1행: 매물명 (지번정보)
                 if (index === 0) {
                     const match = line.match(/^➡️?(.+?)\s*\((.+?)\)/);
                     if (match) {
                         result.name = match[1].trim();
                         result.address = match[2].trim();
                     } else {
-                        // 괄호가 없는 경우 전체를 매물명으로
                         result.name = line.replace(/^➡️/, '').trim();
                     }
                 }
-                
-                // 2행: 임대료 정보
                 else if (index === 1 && line.includes('전세')) {
                     const rentMatch = line.match(/전세:\s*(.+)/);
                     if (rentMatch) {
                         result.rent = rentMatch[1].trim();
                     }
                 }
-                
-                // 3행: 평수, 방, 욕실 정보
                 else if (index === 2 && line.includes('정  보')) {
                     const infoMatch = line.match(/정\s*보:\s*(.+)/);
                     if (infoMatch) {
                         const info = infoMatch[1];
-                        
-                        // 평수 정보 추출
                         const areaMatch = info.match(/(\d+\.?\d*)㎡\s*\(~?(\d+\.?\d*)평\)/);
                         if (areaMatch) {
                             result.area_sqm = areaMatch[1];
                             result.area_pyeong = areaMatch[2];
                         }
-                        
-                        // 방, 욕실 정보 추출
                         const roomMatch = info.match(/방\s*(\d+)개/);
                         const bathMatch = info.match(/욕실\s*(\d+)개/);
                         if (roomMatch) result.rooms = roomMatch[1];
                         if (bathMatch) result.bathrooms = bathMatch[1];
                     }
                 }
-                
-                // 4행: 방향, 동, 층 정보
                 else if (index === 3 && line.includes('특  징')) {
                     const featureMatch = line.match(/특\s*징:\s*(.+)/);
                     if (featureMatch) {
                         const features = featureMatch[1];
-                        
-                        // 방향 정보
                         const directionMatch = features.match(/(남향|북향|동향|서향|남동향|남서향|북동향|북서향)/);
                         if (directionMatch) result.direction = directionMatch[1];
-                        
-                        // 동 정보
                         const buildingMatch = features.match(/(\d+)동/);
                         if (buildingMatch) result.building = buildingMatch[1] + '동';
-                        
-                        // 층 정보
                         const floorMatch = features.match(/(\d+)층\/총(\d+)층/);
                         if (floorMatch) {
                             result.floor = floorMatch[1] + '층';
@@ -259,16 +248,12 @@
                         }
                     }
                 }
-                
-                // 5행: 공개비고
                 else if (index === 4 && line.includes('공개비고')) {
                     const notesMatch = line.match(/공개비고:\s*(.+)/);
                     if (notesMatch) {
                         result.notes = notesMatch[1].trim();
                     }
                 }
-                
-                // 6행: 문의처 정보
                 else if (index === 5 && line.includes('문  의')) {
                     const contactMatch = line.match(/문\s*의:\s*(.+?)\s*\((.+?)\)/);
                     if (contactMatch) {
@@ -317,13 +302,15 @@
             }
         ];
 
-        // 문자 템플릿
-        const messageTemplates = [
+        // 기본 문자 템플릿
+        const defaultTemplates = [
             { id: 1, name: '방문 예정 알림', message: '안녕하세요. OOO부동산입니다. 잠시 후 방문 예정이니 확인 부탁드립니다.' },
             { id: 2, name: '도착 알림', message: '안녕하세요. 매물 앞에 도착했습니다.' },
-            { id: 3, name: '일정 변경', message: '죄송합니다. 급한 일이 생겨 방문 시간이 조금 늦어질 예정입니다.' }
+            { id: 3, name: '일정 변경', message: '죄송합니다. 급한 일이 생겨 방문 시간이 조금 늦어질 예정입니다.' },
+            { id: 4, name: '미팅 완료', message: '오늘 미팅 감사했습니다. 곧 보고서를 보내드리겠습니다.' }
         ];
         
+        // 메인 앱 컴포넌트
         function App() {
             const [currentView, setCurrentView] = useState('list');
             const [selectedMeetingId, setSelectedMeetingId] = useState(null);
@@ -343,20 +330,19 @@
                 PWAManager.init();
                 
                 // 설치 프롬프트 체크
-                window.addEventListener('beforeinstallprompt', (e) => {
-                    e.preventDefault();
-                    PWAManager.deferredPrompt = e;
+                window.addEventListener('beforeinstallprompt', () => {
                     setShowInstallPrompt(true);
                 });
             }, []);
             
-            // 데이터 변경 시 자동 저장
+            // 미팅 데이터 변경 시 저장
             useEffect(() => {
                 if (meetings.length > 0) {
                     StorageManager.saveMeetings(meetings);
                 }
             }, [meetings]);
             
+            // 템플릿 데이터 변경 시 저장
             useEffect(() => {
                 if (messageTemplates.length > 0) {
                     StorageManager.saveTemplates(messageTemplates);
@@ -411,12 +397,11 @@
                     m.id === updatedMeeting.id ? updatedMeeting : m
                 ));
             };
-            
+
             const handleInstallApp = async () => {
                 const installed = await PWAManager.install();
                 if (installed) {
                     setShowInstallPrompt(false);
-                    alert('앱이 홈 화면에 설치되었습니다!');
                 }
             };
             
@@ -436,6 +421,8 @@
                     onBack={handleBackToList}
                     onEdit={handleEdit}
                     onUpdate={handleUpdateMeeting}
+                    messageTemplates={messageTemplates}
+                    onUpdateTemplates={setMessageTemplates}
                 />;
             }
             
@@ -449,7 +436,7 @@
                     {showInstallPrompt && (
                         <div className="install-prompt">
                             <div className="flex items-center justify-between">
-                                <span className="mr-4 text-sm">📱 앱을 홈 화면에 설치하시겠습니까?</span>
+                                <span className="mr-4">앱을 홈 화면에 설치하시겠습니까?</span>
                                 <div>
                                     <button 
                                         onClick={handleInstallApp}
@@ -471,6 +458,7 @@
             );
         }
         
+        // 미팅 리스트 컴포넌트 (기존과 동일)
         function MeetingList({ meetings, onMeetingClick, onNewMeeting }) {
             const formatDate = (dateString) => {
                 const date = new Date(dateString);
@@ -479,7 +467,6 @@
 
             return (
                 <div className="max-w-md mx-auto bg-white min-h-screen">
-                    {/* 헤더 */}
                     <div className="flex items-center justify-between p-4 border-b border-gray-100">
                         <h1 className="text-xl font-semibold text-gray-800">미팅 노트</h1>
                         <button 
@@ -490,7 +477,6 @@
                         </button>
                     </div>
 
-                    {/* 미팅 리스트 */}
                     <div className="p-4 space-y-3">
                         {meetings.length === 0 ? (
                             <div className="text-center py-12 text-gray-400">
@@ -548,6 +534,67 @@
             );
         }
 
+        // 카메라 컴포넌트
+        function CameraView({ onCapture, onClose }) {
+            const videoRef = useRef(null);
+            const [stream, setStream] = useState(null);
+
+            useEffect(() => {
+                const startCamera = async () => {
+                    const mediaStream = await PhotoManager.takePhoto();
+                    if (mediaStream) {
+                        setStream(mediaStream);
+                        if (videoRef.current) {
+                            videoRef.current.srcObject = mediaStream;
+                        }
+                    }
+                };
+                startCamera();
+
+                return () => {
+                    if (stream) {
+                        stream.getTracks().forEach(track => track.stop());
+                    }
+                };
+            }, []);
+
+            const handleCapture = () => {
+                if (videoRef.current) {
+                    const photoData = PhotoManager.captureFrame(videoRef.current);
+                    onCapture(photoData);
+                }
+            };
+
+            return (
+                <div className="camera-view">
+                    <div className="flex items-center justify-between p-4 text-white">
+                        <button onClick={onClose} className="text-xl">✕</button>
+                        <h2 className="text-lg font-semibold">매물 촬영</h2>
+                        <div></div>
+                    </div>
+                    
+                    <div className="flex-1 relative">
+                        <video 
+                            ref={videoRef}
+                            autoPlay 
+                            playsInline 
+                            className="w-full h-full object-cover"
+                        />
+                    </div>
+                    
+                    <div className="p-6 flex justify-center">
+                        <button
+                            onClick={handleCapture}
+                            className="w-16 h-16 bg-white rounded-full border-4 border-gray-300 flex items-center justify-center"
+                        >
+                            <div className="w-12 h-12 bg-white rounded-full shadow-lg"></div>
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        // PropertyPasteModal 컴포넌트
         function PropertyPasteModal({ onClose, onParse }) {
             const [pasteText, setPasteText] = useState('');
             const [previewData, setPreviewData] = useState(null);
@@ -584,26 +631,14 @@
                     <div className="bg-white rounded-lg w-full max-w-lg max-h-96 overflow-y-auto">
                         <div className="flex items-center justify-between p-4 border-b border-gray-100">
                             <h3 className="text-lg font-semibold text-gray-800">매물 정보 붙여넣기</h3>
-                            <button 
-                                onClick={onClose}
-                                className="text-gray-500 hover:text-gray-700"
-                            >
-                                ✕
-                            </button>
+                            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
                         </div>
                         
                         <div className="p-4 space-y-4">
                             <div>
                                 <div className="flex items-center justify-between mb-2">
-                                    <label className="block text-sm font-medium text-gray-700">
-                                        매물 정보 (6줄 형식)
-                                    </label>
-                                    <button 
-                                        onClick={handleUseSample}
-                                        className="text-xs text-blue-600 hover:underline"
-                                    >
-                                        샘플 사용
-                                    </button>
+                                    <label className="block text-sm font-medium text-gray-700">매물 정보 (6줄 형식)</label>
+                                    <button onClick={handleUseSample} className="text-xs text-blue-600 hover:underline">샘플 사용</button>
                                 </div>
                                 <textarea
                                     value={pasteText}
@@ -632,26 +667,11 @@
                         </div>
                         
                         <div className="p-4 border-t border-gray-100 flex space-x-3">
-                            <button 
-                                onClick={onClose}
-                                className="flex-1 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
-                            >
-                                취소
-                            </button>
+                            <button onClick={onClose} className="flex-1 py-2 border border-gray-300 rounded-md hover:bg-gray-50">취소</button>
                             {!previewData ? (
-                                <button 
-                                    onClick={handlePreview}
-                                    className="flex-1 bg-gray-600 text-white py-2 rounded-md hover:bg-gray-700"
-                                >
-                                    미리보기
-                                </button>
+                                <button onClick={handlePreview} className="flex-1 bg-gray-600 text-white py-2 rounded-md hover:bg-gray-700">미리보기</button>
                             ) : (
-                                <button 
-                                    onClick={handleConfirm}
-                                    className="flex-1 bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700"
-                                >
-                                    적용
-                                </button>
+                                <button onClick={handleConfirm} className="flex-1 bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700">적용</button>
                             )}
                         </div>
                     </div>
@@ -659,6 +679,7 @@
             );
         }
 
+        // MeetingEdit 컴포넌트
         function MeetingEdit({ meetingId, meeting, onSave, onBack }) {
             const [formData, setFormData] = useState({
                 customerName: meeting?.customerName || '',
@@ -676,12 +697,15 @@
                     status: '확인전',
                     rent: '',
                     notes: [],
-                    customerReaction: ''
+                    customerReaction: '',
+                    photos: []
                 }]
             });
             
             const [showPasteModal, setShowPasteModal] = useState(false);
             const [editingPropertyIndex, setEditingPropertyIndex] = useState(null);
+            const [showCamera, setShowCamera] = useState(false);
+            const [photoPropertyIndex, setPhotoPropertyIndex] = useState(null);
 
             const handleInputChange = (field, value) => {
                 setFormData(prev => ({ ...prev, [field]: value }));
@@ -705,7 +729,8 @@
                     status: '확인전',
                     rent: '',
                     notes: [],
-                    customerReaction: ''
+                    customerReaction: '',
+                    photos: []
                 };
                 setFormData(prev => ({ 
                     ...prev, 
@@ -751,6 +776,35 @@
                 setEditingPropertyIndex(null);
             };
 
+            const handleTakePhoto = (index) => {
+                setPhotoPropertyIndex(index);
+                setShowCamera(true);
+            };
+
+            const handlePhotoCapture = async (photoData) => {
+                if (photoPropertyIndex !== null) {
+                    const resizedPhoto = await PhotoManager.resizeImage(photoData);
+                    const updatedProperties = [...formData.properties];
+                    if (!updatedProperties[photoPropertyIndex].photos) {
+                        updatedProperties[photoPropertyIndex].photos = [];
+                    }
+                    updatedProperties[photoPropertyIndex].photos.push({
+                        id: Date.now().toString(),
+                        data: resizedPhoto,
+                        timestamp: new Date().toISOString()
+                    });
+                    setFormData(prev => ({ ...prev, properties: updatedProperties }));
+                }
+                setShowCamera(false);
+                setPhotoPropertyIndex(null);
+            };
+
+            const handleDeletePhoto = (propertyIndex, photoId) => {
+                const updatedProperties = [...formData.properties];
+                updatedProperties[propertyIndex].photos = updatedProperties[propertyIndex].photos.filter(photo => photo.id !== photoId);
+                setFormData(prev => ({ ...prev, properties: updatedProperties }));
+            };
+
             const handleSave = () => {
                 if (!formData.customerName.trim()) {
                     alert('고객명을 입력해주세요.');
@@ -769,32 +823,23 @@
                 });
             };
 
+            if (showCamera) {
+                return <CameraView onCapture={handlePhotoCapture} onClose={() => setShowCamera(false)} />;
+            }
+
             return (
                 <div className="max-w-md mx-auto bg-white min-h-screen">
-                    {/* 헤더 */}
                     <div className="flex items-center justify-between p-4 border-b border-gray-100">
                         <div className="flex items-center space-x-3">
-                            <button 
-                                onClick={onBack}
-                                className="text-blue-600 font-semibold text-lg"
-                            >
-                                ←
-                            </button>
+                            <button onClick={onBack} className="text-blue-600 font-semibold text-lg">←</button>
                             <h1 className="font-semibold text-gray-800">
                                 {meetingId === 'new' ? '새 미팅' : '미팅 편집'}
                             </h1>
                         </div>
-                        <button 
-                            onClick={handleSave}
-                            className="text-blue-600 font-medium"
-                        >
-                            저장
-                        </button>
+                        <button onClick={handleSave} className="text-blue-600 font-medium">저장</button>
                     </div>
 
-                    {/* 폼 */}
                     <div className="p-4 space-y-6 pb-20">
-                        {/* 기본 정보 */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">고객명</label>
                             <input
@@ -830,7 +875,6 @@
                             </div>
                         </div>
 
-                        {/* 매물 정보 */}
                         <div>
                             <div className="flex items-center justify-between mb-4">
                                 <h3 className="text-lg font-medium text-gray-800">매물 정보</h3>
@@ -852,6 +896,12 @@
                                                 className="text-blue-600 text-sm hover:underline"
                                             >
                                                 📋 붙여넣기
+                                            </button>
+                                            <button
+                                                onClick={() => handleTakePhoto(index)}
+                                                className="text-green-600 text-sm hover:underline"
+                                            >
+                                                📷 촬영
                                             </button>
                                             {formData.properties.length > 1 && (
                                                 <button
@@ -910,12 +960,12 @@
                                         placeholder="임대료 (예: 전세 5억, 월세 200/70)"
                                         value={property.rent}
                                         onChange={(e) => handlePropertyChange(index, 'rent', e.target.value)}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm mb-3"
                                     />
 
                                     {/* 파싱된 추가 정보 표시 */}
                                     {(property.rooms || property.direction || property.building) && (
-                                        <div className="mt-3 p-2 bg-blue-50 rounded text-xs text-gray-600">
+                                        <div className="p-2 bg-blue-50 rounded text-xs text-gray-600 mb-3">
                                             <div className="grid grid-cols-2 gap-2">
                                                 {property.rooms && <span>방 {property.rooms}개</span>}
                                                 {property.bathrooms && <span>욕실 {property.bathrooms}개</span>}
@@ -926,12 +976,35 @@
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* 사진 미리보기 */}
+                                    {property.photos && property.photos.length > 0 && (
+                                        <div className="mt-3">
+                                            <p className="text-sm font-medium text-gray-700 mb-2">첨부된 사진</p>
+                                            <div className="flex space-x-2 overflow-x-auto">
+                                                {property.photos.map((photo) => (
+                                                    <div key={photo.id} className="relative flex-shrink-0">
+                                                        <img 
+                                                            src={photo.data} 
+                                                            alt="매물 사진" 
+                                                            className="photo-preview"
+                                                        />
+                                                        <button
+                                                            onClick={() => handleDeletePhoto(index, photo.id)}
+                                                            className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    {/* 붙여넣기 모달 */}
                     {showPasteModal && (
                         <PropertyPasteModal 
                             onClose={() => {
@@ -944,14 +1017,16 @@
                 </div>
             );
         }
-        
-        // 나머지 컴포넌트들 (MeetingDetail, MessageModal, ReportModal, NotesModal)은 이전과 동일
-        function MeetingDetail({ meetingId, meeting, onBack, onEdit, onUpdate }) {
+
+        // MeetingDetail 컴포넌트
+        function MeetingDetail({ meetingId, meeting, onBack, onEdit, onUpdate, messageTemplates, onUpdateTemplates }) {
             const [showMessageModal, setShowMessageModal] = useState(false);
             const [showReportModal, setShowReportModal] = useState(false);
             const [editingProperty, setEditingProperty] = useState(null);
             const [propertyNotes, setPropertyNotes] = useState('');
             const [customerReaction, setCustomerReaction] = useState('');
+            const [showCamera, setShowCamera] = useState(false);
+            const [photoPropertyIndex, setPhotoPropertyIndex] = useState(null);
 
             if (!meeting) {
                 return (
@@ -968,16 +1043,11 @@
 
             const getStatusColor = (status) => {
                 switch (status) {
-                    case '볼수있음':
-                        return 'text-green-600';
-                    case '확인중':
-                        return 'text-orange-500';
-                    case '보류':
-                        return 'text-red-500';
-                    case '확인전':
-                        return 'text-gray-500';
-                    default:
-                        return 'text-gray-400';
+                    case '볼수있음': return 'text-green-600';
+                    case '확인중': return 'text-orange-500';
+                    case '보류': return 'text-red-500';
+                    case '확인전': return 'text-gray-500';
+                    default: return 'text-gray-400';
                 }
             };
 
@@ -1024,41 +1094,73 @@
                 }
             };
 
+            const handleTakePhoto = (index) => {
+                setPhotoPropertyIndex(index);
+                setShowCamera(true);
+            };
+
+            const handlePhotoCapture = async (photoData) => {
+                if (photoPropertyIndex !== null) {
+                    const resizedPhoto = await PhotoManager.resizeImage(photoData);
+                    const updatedMeeting = {
+                        ...meeting,
+                        properties: meeting.properties.map((prop, index) =>
+                            index === photoPropertyIndex 
+                                ? {
+                                    ...prop,
+                                    photos: [
+                                        ...(prop.photos || []),
+                                        {
+                                            id: Date.now().toString(),
+                                            data: resizedPhoto,
+                                            timestamp: new Date().toISOString()
+                                        }
+                                    ]
+                                }
+                                : prop
+                        )
+                    };
+                    onUpdate(updatedMeeting);
+                }
+                setShowCamera(false);
+                setPhotoPropertyIndex(null);
+            };
+
+            const handleDeletePhoto = (propertyIndex, photoId) => {
+                const updatedMeeting = {
+                    ...meeting,
+                    properties: meeting.properties.map((prop, index) =>
+                        index === propertyIndex 
+                            ? {
+                                ...prop,
+                                photos: prop.photos.filter(photo => photo.id !== photoId)
+                            }
+                            : prop
+                    )
+                };
+                onUpdate(updatedMeeting);
+            };
+
+            if (showCamera) {
+                return <CameraView onCapture={handlePhotoCapture} onClose={() => setShowCamera(false)} />;
+            }
+
             return (
                 <div className="max-w-md mx-auto bg-white min-h-screen">
-                    {/* 헤더 */}
                     <div className="flex items-center justify-between p-4 border-b border-gray-100">
                         <div className="flex items-center space-x-3">
-                            <button 
-                                onClick={onBack}
-                                className="text-blue-600 font-semibold text-lg"
-                            >
-                                ←
-                            </button>
+                            <button onClick={onBack} className="text-blue-600 font-semibold text-lg">←</button>
                             <div>
                                 <h1 className="font-semibold text-gray-800">{meeting.customerName}님 미팅</h1>
-                                <p className="text-sm text-gray-500">
-                                    {formatDate(meeting.date)} • {meeting.purpose}
-                                </p>
+                                <p className="text-sm text-gray-500">{formatDate(meeting.date)} • {meeting.purpose}</p>
                             </div>
                         </div>
                         <div className="flex space-x-2">
-                            <button 
-                                onClick={() => setShowMessageModal(true)}
-                                className="text-green-600 text-sm font-medium"
-                            >
-                                문자
-                            </button>
-                            <button 
-                                onClick={onEdit}
-                                className="text-blue-600 font-medium"
-                            >
-                                편집
-                            </button>
+                            <button onClick={() => setShowMessageModal(true)} className="text-green-600 text-sm font-medium">문자</button>
+                            <button onClick={onEdit} className="text-blue-600 font-medium">편집</button>
                         </div>
                     </div>
 
-                    {/* 매물 리스트 */}
                     <div className="p-4 space-y-4 pb-20">
                         {meeting.properties.map((property, index) => (
                             <div key={property.id} className="bg-gray-50 rounded-lg p-4 border border-gray-100">
@@ -1067,14 +1169,9 @@
                                         <h3 className="font-medium text-gray-800">
                                             {property.name} {property.area_pyeong}평
                                         </h3>
-                                        <p className="text-sm text-gray-500">
-                                            {property.address} • {property.visitTime}
-                                        </p>
-                                        <p className="text-sm text-gray-500">
-                                            {property.rent}
-                                        </p>
+                                        <p className="text-sm text-gray-500">{property.address} • {property.visitTime}</p>
+                                        <p className="text-sm text-gray-500">{property.rent}</p>
                                         
-                                        {/* 상세 정보 표시 */}
                                         {(property.rooms || property.direction || property.building) && (
                                             <div className="mt-2 text-xs text-gray-400 space-x-2">
                                                 {property.rooms && <span>방{property.rooms}</span>}
@@ -1097,20 +1194,51 @@
                                     </select>
                                 </div>
 
-                                {/* 연락처 */}
                                 <div className="flex items-center justify-between mb-3">
                                     <div className="text-sm text-gray-500">
                                         {property.agencyName || property.contactType}: {property.contact}
                                     </div>
-                                    <button
-                                        onClick={() => handleCall(property.contact)}
-                                        className="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
-                                    >
-                                        전화
-                                    </button>
+                                    <div className="flex space-x-2">
+                                        <button
+                                            onClick={() => handleCall(property.contact)}
+                                            className="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
+                                        >
+                                            전화
+                                        </button>
+                                        <button
+                                            onClick={() => handleTakePhoto(index)}
+                                            className="px-3 py-1 bg-green-600 text-white text-sm rounded-md hover:bg-green-700"
+                                        >
+                                            📷
+                                        </button>
+                                    </div>
                                 </div>
 
-                                {/* 메모 및 고객 반응 */}
+                                {/* 사진 표시 */}
+                                {property.photos && property.photos.length > 0 && (
+                                    <div className="mb-3">
+                                        <p className="text-sm font-medium text-gray-700 mb-2">첨부된 사진</p>
+                                        <div className="flex space-x-2 overflow-x-auto">
+                                            {property.photos.map((photo) => (
+                                                <div key={photo.id} className="relative flex-shrink-0">
+                                                    <img 
+                                                        src={photo.data} 
+                                                        alt="매물 사진" 
+                                                        className="photo-preview"
+                                                        onClick={() => window.open(photo.data)}
+                                                    />
+                                                    <button
+                                                        onClick={() => handleDeletePhoto(index, photo.id)}
+                                                        className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="border-t border-gray-200 pt-3 mt-3">
                                     <div className="flex items-center justify-between mb-2">
                                         <p className="text-xs text-gray-500 font-medium">현장 기록</p>
@@ -1146,7 +1274,6 @@
                         ))}
                     </div>
 
-                    {/* 하단 버튼 */}
                     <div className="fixed bottom-0 left-1/2 transform -translate-x-1/2 w-full max-w-md bg-white border-t border-gray-100 p-4">
                         <button 
                             onClick={() => setShowReportModal(true)}
@@ -1156,15 +1283,14 @@
                         </button>
                     </div>
 
-                    {/* 문자 템플릿 모달 */}
                     {showMessageModal && (
                         <MessageModal 
                             onClose={() => setShowMessageModal(false)}
                             meeting={meeting}
+                            templates={messageTemplates}
                         />
                     )}
 
-                    {/* 보고서 미리보기 모달 */}
                     {showReportModal && (
                         <ReportModal 
                             onClose={() => setShowReportModal(false)}
@@ -1172,7 +1298,6 @@
                         />
                     )}
 
-                    {/* 메모 편집 모달 */}
                     {editingProperty && (
                         <NotesModal 
                             property={editingProperty}
@@ -1188,8 +1313,8 @@
             );
         }
 
-        // 다른 모달 컴포넌트들도 동일하게 유지
-        function MessageModal({ onClose, meeting }) {
+        // MessageModal 컴포넌트
+        function MessageModal({ onClose, meeting, templates }) {
             const handleSendMessage = (template) => {
                 const message = template.message.replace('OOO부동산', '미팅노트부동산');
                 alert(`문자 전송:\n수신: ${meeting.properties[0]?.contact}\n내용: ${message}`);
@@ -1201,15 +1326,10 @@
                     <div className="bg-white rounded-t-lg w-full max-w-md max-h-96 overflow-y-auto">
                         <div className="flex items-center justify-between p-4 border-b border-gray-100">
                             <h3 className="text-lg font-semibold text-gray-800">문자 템플릿</h3>
-                            <button 
-                                onClick={onClose}
-                                className="text-gray-500 hover:text-gray-700"
-                            >
-                                ✕
-                            </button>
+                            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
                         </div>
                         <div className="p-4 space-y-3">
-                            {messageTemplates.map(template => (
+                            {templates.map(template => (
                                 <div key={template.id} className="border border-gray-200 rounded-lg p-3">
                                     <h4 className="font-medium text-gray-800 mb-1">{template.name}</h4>
                                     <p className="text-sm text-gray-600 mb-3">{template.message}</p>
@@ -1227,6 +1347,7 @@
             );
         }
 
+        // ReportModal 컴포넌트
         function ReportModal({ onClose, meeting }) {
             const formatDate = (dateString) => {
                 const date = new Date(dateString);
@@ -1250,12 +1371,7 @@
                     <div className="bg-white rounded-lg w-full max-w-sm max-h-96 overflow-y-auto">
                         <div className="flex items-center justify-between p-4 border-b border-gray-100">
                             <h3 className="text-lg font-semibold text-gray-800">보고서 미리보기</h3>
-                            <button 
-                                onClick={onClose}
-                                className="text-gray-500 hover:text-gray-700"
-                            >
-                                ✕
-                            </button>
+                            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
                         </div>
                         
                         <div className="p-4 bg-gray-50 text-sm">
@@ -1271,7 +1387,6 @@
                                         <p className="text-gray-600 text-xs">{property.address}</p>
                                         <p className="text-gray-600 text-xs">{property.rent}</p>
                                         
-                                        {/* 상세 정보 */}
                                         {(property.rooms || property.direction) && (
                                             <p className="text-gray-600 text-xs">
                                                 {property.rooms && `방${property.rooms}개 `}
@@ -1296,6 +1411,12 @@
                                                 <span className="font-medium">고객 반응:</span> {property.customerReaction}
                                             </p>
                                         )}
+
+                                        {property.photos && property.photos.length > 0 && (
+                                            <p className="text-xs mt-1 text-blue-600">
+                                                📷 첨부된 사진: {property.photos.length}장
+                                            </p>
+                                        )}
                                     </div>
                                 ))}
                                 
@@ -1318,18 +1439,14 @@
             );
         }
 
+        // NotesModal 컴포넌트
         function NotesModal({ property, notes, reaction, onNotesChange, onReactionChange, onSave, onClose }) {
             return (
                 <div className="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg w-full max-w-sm">
                         <div className="flex items-center justify-between p-4 border-b border-gray-100">
                             <h3 className="text-lg font-semibold text-gray-800">현장 기록 편집</h3>
-                            <button 
-                                onClick={onClose}
-                                className="text-gray-500 hover:text-gray-700"
-                            >
-                                ✕
-                            </button>
+                            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
                         </div>
                         
                         <div className="p-4 space-y-4">
@@ -1374,85 +1491,6 @@
                                 저장
                             </button>
                         </div>
-                    </div>
-                </div>
-            );
-        }
-        
-        // 카메라 컴포넌트
-        function CameraView({ onCapture, onClose }) {
-            const videoRef = useRef(null);
-            const [stream, setStream] = useState(null);
-            const [isReady, setIsReady] = useState(false);
-
-            useEffect(() => {
-                const startCamera = async () => {
-                    const mediaStream = await PhotoManager.takePhoto();
-                    if (mediaStream) {
-                        setStream(mediaStream);
-                        if (videoRef.current) {
-                            videoRef.current.srcObject = mediaStream;
-                            videoRef.current.onloadedmetadata = () => {
-                                setIsReady(true);
-                            };
-                        }
-                    } else {
-                        alert('카메라에 접근할 수 없습니다.');
-                        onClose();
-                    }
-                };
-                startCamera();
-
-                return () => {
-                    if (stream) {
-                        stream.getTracks().forEach(track => track.stop());
-                    }
-                };
-            }, []);
-
-            const handleCapture = async () => {
-                if (videoRef.current && isReady) {
-                    const photoData = PhotoManager.captureFrame(videoRef.current);
-                    const compressedPhoto = await PhotoManager.compressImage(photoData);
-                    onCapture(compressedPhoto);
-                }
-            };
-
-            return (
-                <div className="camera-view">
-                    <div className="flex items-center justify-between p-4 text-white bg-black bg-opacity-50">
-                        <button 
-                            onClick={onClose} 
-                            className="text-xl w-8 h-8 flex items-center justify-center"
-                        >
-                            ✕
-                        </button>
-                        <h2 className="text-lg font-semibold">매물 촬영</h2>
-                        <div className="w-8"></div>
-                    </div>
-                    
-                    <div className="flex-1 relative">
-                        <video 
-                            ref={videoRef}
-                            autoPlay 
-                            playsInline 
-                            className="w-full h-full object-cover"
-                        />
-                        {!isReady && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white">
-                                <p>카메라를 준비 중입니다...</p>
-                            </div>
-                        )}
-                    </div>
-                    
-                    <div className="p-6 flex justify-center bg-black bg-opacity-50">
-                        <button
-                            onClick={handleCapture}
-                            disabled={!isReady}
-                            className="w-16 h-16 bg-white rounded-full border-4 border-gray-300 flex items-center justify-center disabled:opacity-50"
-                        >
-                            <div className="w-12 h-12 bg-white rounded-full shadow-lg"></div>
-                        </button>
                     </div>
                 </div>
             );
