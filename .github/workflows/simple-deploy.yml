@@ -1,22 +1,21 @@
-name: Simple GitHub Pages Deploy
+name: Deploy to GitHub Pages
 
 on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
+    
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -27,7 +26,6 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
       with:
-        # index.html이 있는 루트 디렉토리 업로드
         path: '.'
 
     - name: Deploy to GitHub Pages
