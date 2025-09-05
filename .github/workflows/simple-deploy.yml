@@ -20,13 +20,28 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
+    # Node.js 설정
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 18
+
+    # 의존성 설치
+    - name: Install dependencies
+      run: npm install
+
+    # 앱 빌드
+    - name: Build
+      run: npm run build
+
     - name: Setup Pages
       uses: actions/configure-pages@v4
 
+    # 빌드 결과물 업로드
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
       with:
-        path: '.'
+        path: './dist'
 
     - name: Deploy to GitHub Pages
       id: deployment
