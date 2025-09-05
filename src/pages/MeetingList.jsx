@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { db } from '../firebase'
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore'
+import InstallPWAButton from '../components/InstallPWAButton';
 
 function MeetingList() {
   const [meetings, setMeetings] = useState([])
@@ -38,6 +39,7 @@ function MeetingList() {
       <div className="flex items-center justify-between p-4 border-b border-gray-100">
         <h1 className="text-xl font-semibold text-text">미팅 노트</h1>
         <div className="flex items-center space-x-2">
+          <InstallPWAButton />
           <Link 
             to="/data"
             className="w-8 h-8 flex items-center justify-center text-lg"
