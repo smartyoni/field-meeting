@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>미팅 노트 - 매물 파싱 기능</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #ffffff;
+        }
+        .modal-backdrop {
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        .parse-textarea {
+            font-family: 'Courier New', monospace;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        // 매물 정보 파싱 함수
+        function parsePropertyInfo(text) {
+            const lines = text.split('\n').map(line => line.trim()).filter(line => line);
+            
+            let result = {
+                name: '',
+                address: '',
+                rent: '',
+                area_sqm: '',
+                area_pyeong: '',
+                rooms: '',
+                bathrooms: '',
+                direction: '',
+                building: '',
+                floor: '',
+                totalFloor: '',
+                notes: '',
+                contact: '',
+                contactType: '부동산',
+                agencyName: ''
+            };
+            
+            lines.forEach((line, index) => {
+                // 1행: 매물명 (지번정보)
+                if (index === 0) {
+                    const match = line.match(/^➡️?(.+?)\s*\((.+?)\)/);
+                    if (match) {
+                        result.name = match[1].trim();
+                        result.address = match[2].trim();
+                    } else {
+                        // 괄호가 없는 경우 전체를 매물명으로
+                        result.name = line.replace(/^➡️/, '').trim();
+                    }
+                }
+                
+                // 2행: 임대료 정보
+                else if (index === 1 && line.includes('전세')) {
+                    const rentMatch = line.match(/전세:\s*(.+)/);
+                    if (rentMatch) {
+                        result.rent = rentMatch[1].trim();
+                    }
+                }
+                
+                // 3행: 평수, 방, 욕실 정보
+                else if (index === 2 && line.includes('정  보')) {
+                    const infoMatch = line.match(/정\s*보:\s*(.+)/);
+                    if (infoMatch) {
+                        const info = infoMatch[1];
+                        
+                        // 평수 정보 추출
+                        const areaMatch = info.match(/(\d+\.?\d*)㎡\s*\(~?(\d+\.?\d*)평\)/);
+                        if (areaMatch) {
+                            result.area_sqm = areaMatch[1];
+                            result.area_pyeong = areaMatch[2];
+                        }
+                        
+                        // 방, 욕실 정보 추출
+                        const roomMatch = info.match(/방\s*(\d+)개/);
+                        const bathMatch = info.match(/욕실\s*(\d+)개/);
+                        if (roomMatch) result.rooms = roomMatch[1];
+                        if (bathMatch) result.bathrooms = bathMatch[1];
+                    }
+                }
+                
+                // 4행: 방향, 동, 층 정보
+                else if (index === 3 && line.includes('특  징')) {
+                    const featureMatch = line.match(/특\s*징:\s*(.+)/);
+                    if (featureMatch) {
+                        const features = featureMatch[1];
+                        
+                        // 방향 정보
+                        const directionMatch = features.match(/(남향|북향|동향|서향|남동향|남서향|북동향|북서향)/);
+                        if (directionMatch) result.direction = directionMatch[1];
+                        
+                        // 동 정보
+                        const buildingMatch = features.match(/(\d+)동/);
+                        if (buildingMatch) result.building = buildingMatch[1] + '동';
+                        
+                        // 층 정보
+                        const floorMatch = features.match(/(\d+)층\/총(\d+)층/);
+                        if (floorMatch) {
+                            result.floor = floorMatch[1] + '층';
+                            result.totalFloor = floorMatch[2] + '층';
+                        }
+                    }
+                }
+                
+                // 5행: 공개비고
+                else if (index === 4 && line.includes('공개비고')) {
+                    const notesMatch = line.match(/공개비고:\s*(.+)/);
+                    if (notesMatch) {
+                        result.notes = notesMatch[1].trim();
+                    }
+                }
+                
+                // 6행: 문의처 정보
+                else if (index === 5 && line.includes('문  의')) {
+                    const contactMatch = line.match(/문\s*의:\s*(.+?)\s*\((.+?)\)/);
+                    if (contactMatch) {
+                        result.agencyName = contactMatch[1].trim();
+                        result.contact = contactMatch[2].trim();
+                        result.contactType = '부동산';
+                    }
+                }
+            });
+            
+            return result;
+        }
+        
+        // 초기 목업 데이터
+        const initialMeetings = [
+            {
+                id: '1',
+                customerName: '김철수',
+                date: '2024-09-06',
+                purpose: '전세',
+                status: '진행중',
+                properties: [
+                    {
+                        id: 'prop_1',
+                        name: '대림아르빌',
+                        address: '등촌동 637-22',
+                        area_sqm: 84.60,
+                        area_pyeong: 25.6,
+                        rooms: '3',
+                        bathrooms: '2',
+                        direction: '남향',
+                        building: '101동',
+                        floor: '9층',
+                        totalFloor: '9층',
+                        visitTime: '14:00',
+                        contact: '02-3665-5466',
+                        contactType: '부동산',
+                        agencyName: '우리대동공인중개사사무소',
+                        status: '볼수있음',
+                        rent: '전세 4억 8,000만 원',
+                        notes: ['깨끗', '남향', '10월말'],
+                        customerReaction: ''
+                    }
+                ]
+            }
+        ];
+
+        // 문자 템플릿
+        const messageTemplates = [
+            { id: 1, name: '방문 예정 알림', message: '안녕하세요. OOO부동산입니다. 잠시 후 방문 예정이니 확인 부탁드립니다.' },
+            { id: 2, name: '도착 알림', message: '안녕하세요. 매물 앞에 도착했습니다.' },
+            { id: 3, name: '일정 변경', message: '죄송합니다. 급한 일이 생겨 방문 시간이 조금 늦어질 예정입니다.' }
+        ];
+        
+        function App() {
+            const [currentView, setCurrentView] = useState('list');
+            const [selectedMeetingId, setSelectedMeetingId] = useState(null);
+            const [meetings, setMeetings] = useState(initialMeetings);
+            const [isEditing, setIsEditing] = useState(false);
+            
+            const handleMeetingClick = (meetingId) => {
+                setSelectedMeetingId(meetingId);
+                setCurrentView('detail');
+                setIsEditing(false);
+            };
+            
+            const handleNewMeeting = () => {
+                setSelectedMeetingId('new');
+                setCurrentView('edit');
+                setIsEditing(true);
+            };
+            
+            const handleEdit = () => {
+                setCurrentView('edit');
+                setIsEditing(true);
+            };
+            
+            const handleBackToList = () => {
+                setCurrentView('list');
+                setSelectedMeetingId(null);
+                setIsEditing(false);
+            };
+            
+            const handleBackToDetail = () => {
+                setCurrentView('detail');
+                setIsEditing(false);
+            };
+            
+            const handleSaveMeeting = (meetingData) => {
+                if (selectedMeetingId === 'new') {
+                    const newId = Date.now().toString();
+                    const newMeeting = { ...meetingData, id: newId };
+                    setMeetings([...meetings, newMeeting]);
+                    setSelectedMeetingId(newId);
+                } else {
+                    setMeetings(meetings.map(m => 
+                        m.id === selectedMeetingId ? { ...meetingData, id: selectedMeetingId } : m
+                    ));
+                }
+                setCurrentView('detail');
+                setIsEditing(false);
+            };
+            
+            const handleUpdateMeeting = (updatedMeeting) => {
+                setMeetings(meetings.map(m => 
+                    m.id === updatedMeeting.id ? updatedMeeting : m
+                ));
+            };
+            
+            if (currentView === 'edit') {
+                return <MeetingEdit 
+                    meetingId={selectedMeetingId}
+                    meeting={selectedMeetingId === 'new' ? null : meetings.find(m => m.id === selectedMeetingId)}
+                    onSave={handleSaveMeeting}
+                    onBack={selectedMeetingId === 'new' ? handleBackToList : handleBackToDetail}
+                />;
+            }
+            
+            if (currentView === 'detail') {
+                return <MeetingDetail 
+                    meetingId={selectedMeetingId} 
+                    meeting={meetings.find(m => m.id === selectedMeetingId)}
+                    onBack={handleBackToList}
+                    onEdit={handleEdit}
+                    onUpdate={handleUpdateMeeting}
+                />;
+            }
+            
+            return <MeetingList 
+                meetings={meetings}
+                onMeetingClick={handleMeetingClick} 
+                onNewMeeting={handleNewMeeting}
+            />;
+        }
+        
+        function MeetingList({ meetings, onMeetingClick, onNewMeeting }) {
+            const formatDate = (dateString) => {
+                const date = new Date(dateString);
+                return `${date.getMonth() + 1}월 ${date.getDate()}일`;
+            };
+
+            return (
+                <div className="max-w-md mx-auto bg-white min-h-screen">
+                    {/* 헤더 */}
+                    <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                        <h1 className="text-xl font-semibold text-gray-800">미팅 노트</h1>
+                        <button 
+                            onClick={onNewMeeting}
+                            className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-lg font-semibold hover:bg-blue-700"
+                        >
+                            +
+                        </button>
+                    </div>
+
+                    {/* 미팅 리스트 */}
+                    <div className="p-4 space-y-3">
+                        {meetings.length === 0 ? (
+                            <div className="text-center py-12 text-gray-400">
+                                <p>등록된 미팅이 없습니다</p>
+                                <p className="text-sm mt-1">+ 버튼을 눌러 새 미팅을 추가하세요</p>
+                            </div>
+                        ) : (
+                            meetings.map((meeting) => (
+                                <div 
+                                    key={meeting.id} 
+                                    className="bg-gray-50 rounded-lg p-4 border border-gray-100 hover:shadow-sm transition-shadow cursor-pointer"
+                                    onClick={() => onMeetingClick(meeting.id)}
+                                >
+                                    <div className="flex items-start justify-between mb-2">
+                                        <div className="flex items-center space-x-2">
+                                            <span className="text-sm text-gray-500">
+                                                {formatDate(meeting.date)}
+                                            </span>
+                                            <span className="text-gray-400">•</span>
+                                            <span className="font-medium text-gray-800">
+                                                {meeting.customerName}님
+                                            </span>
+                                        </div>
+                                        <span className={`px-2 py-1 text-xs rounded-full ${
+                                            meeting.status === '진행중' 
+                                                ? 'bg-orange-500 text-white' 
+                                                : 'bg-gray-200 text-gray-600'
+                                        }`}>
+                                            {meeting.status}
+                                        </span>
+                                    </div>
+                                    
+                                    <div className="flex items-center space-x-2 text-sm text-gray-500">
+                                        <span>{meeting.purpose}</span>
+                                        <span>•</span>
+                                        <span>{meeting.properties.length}개 매물</span>
+                                    </div>
+                                    
+                                    <div className="mt-2 text-sm text-gray-500">
+                                        {meeting.properties.slice(0, 2).map((prop, index) => (
+                                            <span key={index}>
+                                                {prop.name} {prop.area_pyeong}평
+                                                {index < Math.min(meeting.properties.length - 1, 1) && ', '}
+                                            </span>
+                                        ))}
+                                        {meeting.properties.length > 2 && (
+                                            <span> 외 {meeting.properties.length - 2}곳</span>
+                                        )}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        function PropertyPasteModal({ onClose, onParse }) {
+            const [pasteText, setPasteText] = useState('');
+            const [previewData, setPreviewData] = useState(null);
+            
+            const sampleText = `➡️대림아르빌 (등촌동 637-22)
+➡️전세: 전세 4억 8,000만 원
+➡️정  보: 84.60㎡ (~25.6평) / 방 3개, 욕실 2개
+➡️특  징: 남향, 101동, 9층/총9층
+➡️공개비고: 깨끗,남향,10월말
+➡️문  의: 우리대동공인중개사사무소 (02-3665-5466)`;
+
+            const handlePreview = () => {
+                if (pasteText.trim()) {
+                    const parsed = parsePropertyInfo(pasteText);
+                    setPreviewData(parsed);
+                } else {
+                    alert('매물 정보를 입력해주세요.');
+                }
+            };
+
+            const handleConfirm = () => {
+                if (previewData) {
+                    onParse(previewData);
+                    onClose();
+                }
+            };
+
+            const handleUseSample = () => {
+                setPasteText(sampleText);
+            };
+
+            return (
+                <div className="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg w-full max-w-lg max-h-96 overflow-y-auto">
+                        <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                            <h3 className="text-lg font-semibold text-gray-800">매물 정보 붙여넣기</h3>
+                            <button 
+                                onClick={onClose}
+                                className="text-gray-500 hover:text-gray-700"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        
+                        <div className="p-4 space-y-4">
+                            <div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="block text-sm font-medium text-gray-700">
+                                        매물 정보 (6줄 형식)
+                                    </label>
+                                    <button 
+                                        onClick={handleUseSample}
+                                        className="text-xs text-blue-600 hover:underline"
+                                    >
+                                        샘플 사용
+                                    </button>
+                                </div>
+                                <textarea
+                                    value={pasteText}
+                                    onChange={(e) => setPasteText(e.target.value)}
+                                    placeholder="여기에 매물 정보를 붙여넣으세요..."
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 parse-textarea"
+                                    rows="8"
+                                />
+                            </div>
+                            
+                            {previewData && (
+                                <div className="bg-gray-50 rounded-lg p-3">
+                                    <h4 className="font-medium text-gray-800 mb-2">파싱 결과 미리보기</h4>
+                                    <div className="text-sm space-y-1">
+                                        <p><span className="font-medium">매물명:</span> {previewData.name}</p>
+                                        <p><span className="font-medium">주소:</span> {previewData.address}</p>
+                                        <p><span className="font-medium">임대료:</span> {previewData.rent}</p>
+                                        <p><span className="font-medium">평수:</span> {previewData.area_pyeong}평 ({previewData.area_sqm}㎡)</p>
+                                        <p><span className="font-medium">구조:</span> 방{previewData.rooms}개, 욕실{previewData.bathrooms}개</p>
+                                        <p><span className="font-medium">위치:</span> {previewData.direction}, {previewData.building}, {previewData.floor}/{previewData.totalFloor}</p>
+                                        <p><span className="font-medium">비고:</span> {previewData.notes}</p>
+                                        <p><span className="font-medium">문의:</span> {previewData.agencyName} ({previewData.contact})</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div className="p-4 border-t border-gray-100 flex space-x-3">
+                            <button 
+                                onClick={onClose}
+                                className="flex-1 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                            >
+                                취소
+                            </button>
+                            {!previewData ? (
+                                <button 
+                                    onClick={handlePreview}
+                                    className="flex-1 bg-gray-600 text-white py-2 rounded-md hover:bg-gray-700"
+                                >
+                                    미리보기
+                                </button>
+                            ) : (
+                                <button 
+                                    onClick={handleConfirm}
+                                    className="flex-1 bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700"
+                                >
+                                    적용
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function MeetingEdit({ meetingId, meeting, onSave, onBack }) {
+            const [formData, setFormData] = useState({
+                customerName: meeting?.customerName || '',
+                date: meeting?.date || new Date().toISOString().split('T')[0],
+                purpose: meeting?.purpose || '전세',
+                status: meeting?.status || '계획중',
+                properties: meeting?.properties || [{
+                    id: Date.now().toString(),
+                    name: '',
+                    area_pyeong: '',
+                    address: '',
+                    visitTime: '',
+                    contact: '',
+                    contactType: '집주인',
+                    status: '확인전',
+                    rent: '',
+                    notes: [],
+                    customerReaction: ''
+                }]
+            });
+            
+            const [showPasteModal, setShowPasteModal] = useState(false);
+            const [editingPropertyIndex, setEditingPropertyIndex] = useState(null);
+
+            const handleInputChange = (field, value) => {
+                setFormData(prev => ({ ...prev, [field]: value }));
+            };
+
+            const handlePropertyChange = (index, field, value) => {
+                const updatedProperties = [...formData.properties];
+                updatedProperties[index] = { ...updatedProperties[index], [field]: value };
+                setFormData(prev => ({ ...prev, properties: updatedProperties }));
+            };
+
+            const addProperty = () => {
+                const newProperty = {
+                    id: Date.now().toString(),
+                    name: '',
+                    area_pyeong: '',
+                    address: '',
+                    visitTime: '',
+                    contact: '',
+                    contactType: '집주인',
+                    status: '확인전',
+                    rent: '',
+                    notes: [],
+                    customerReaction: ''
+                };
+                setFormData(prev => ({ 
+                    ...prev, 
+                    properties: [...prev.properties, newProperty] 
+                }));
+            };
+
+            const removeProperty = (index) => {
+                setFormData(prev => ({
+                    ...prev,
+                    properties: prev.properties.filter((_, i) => i !== index)
+                }));
+            };
+
+            const handlePasteProperty = (index) => {
+                setEditingPropertyIndex(index);
+                setShowPasteModal(true);
+            };
+
+            const handleParsedData = (parsedData) => {
+                if (editingPropertyIndex !== null) {
+                    const updatedProperties = [...formData.properties];
+                    updatedProperties[editingPropertyIndex] = {
+                        ...updatedProperties[editingPropertyIndex],
+                        name: parsedData.name,
+                        address: parsedData.address,
+                        area_sqm: parsedData.area_sqm,
+                        area_pyeong: parsedData.area_pyeong,
+                        rooms: parsedData.rooms,
+                        bathrooms: parsedData.bathrooms,
+                        direction: parsedData.direction,
+                        building: parsedData.building,
+                        floor: parsedData.floor,
+                        totalFloor: parsedData.totalFloor,
+                        rent: parsedData.rent,
+                        contact: parsedData.contact,
+                        contactType: parsedData.contactType,
+                        agencyName: parsedData.agencyName,
+                        notes: parsedData.notes ? parsedData.notes.split(',').map(n => n.trim()) : []
+                    };
+                    setFormData(prev => ({ ...prev, properties: updatedProperties }));
+                }
+                setEditingPropertyIndex(null);
+            };
+
+            const handleSave = () => {
+                if (!formData.customerName.trim()) {
+                    alert('고객명을 입력해주세요.');
+                    return;
+                }
+                
+                const validProperties = formData.properties.filter(p => p.name.trim());
+                if (validProperties.length === 0) {
+                    alert('최소 하나의 매물 정보를 입력해주세요.');
+                    return;
+                }
+
+                onSave({
+                    ...formData,
+                    properties: validProperties
+                });
+            };
+
+            return (
+                <div className="max-w-md mx-auto bg-white min-h-screen">
+                    {/* 헤더 */}
+                    <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                        <div className="flex items-center space-x-3">
+                            <button 
+                                onClick={onBack}
+                                className="text-blue-600 font-semibold text-lg"
+                            >
+                                ←
+                            </button>
+                            <h1 className="font-semibold text-gray-800">
+                                {meetingId === 'new' ? '새 미팅' : '미팅 편집'}
+                            </h1>
+                        </div>
+                        <button 
+                            onClick={handleSave}
+                            className="text-blue-600 font-medium"
+                        >
+                            저장
+                        </button>
+                    </div>
+
+                    {/* 폼 */}
+                    <div className="p-4 space-y-6 pb-20">
+                        {/* 기본 정보 */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">고객명</label>
+                            <input
+                                type="text"
+                                value={formData.customerName}
+                                onChange={(e) => handleInputChange('customerName', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="고객명을 입력하세요"
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">날짜</label>
+                                <input
+                                    type="date"
+                                    value={formData.date}
+                                    onChange={(e) => handleInputChange('date', e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">목적</label>
+                                <select
+                                    value={formData.purpose}
+                                    onChange={(e) => handleInputChange('purpose', e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="전세">전세</option>
+                                    <option value="월세">월세</option>
+                                    <option value="매매">매매</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* 매물 정보 */}
+                        <div>
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-medium text-gray-800">매물 정보</h3>
+                                <button
+                                    onClick={addProperty}
+                                    className="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
+                                >
+                                    + 매물 추가
+                                </button>
+                            </div>
+
+                            {formData.properties.map((property, index) => (
+                                <div key={property.id} className="bg-gray-50 rounded-lg p-4 mb-4 border border-gray-100">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h4 className="font-medium text-gray-700">매물 {index + 1}</h4>
+                                        <div className="flex space-x-2">
+                                            <button
+                                                onClick={() => handlePasteProperty(index)}
+                                                className="text-blue-600 text-sm hover:underline"
+                                            >
+                                                📋 붙여넣기
+                                            </button>
+                                            {formData.properties.length > 1 && (
+                                                <button
+                                                    onClick={() => removeProperty(index)}
+                                                    className="text-red-500 text-sm hover:underline"
+                                                >
+                                                    삭제
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3 mb-3">
+                                        <input
+                                            type="text"
+                                            placeholder="매물명"
+                                            value={property.name}
+                                            onChange={(e) => handlePropertyChange(index, 'name', e.target.value)}
+                                            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                        />
+                                        <input
+                                            type="number"
+                                            placeholder="평수"
+                                            value={property.area_pyeong}
+                                            onChange={(e) => handlePropertyChange(index, 'area_pyeong', e.target.value)}
+                                            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                        />
+                                    </div>
+
+                                    <input
+                                        type="text"
+                                        placeholder="주소"
+                                        value={property.address}
+                                        onChange={(e) => handlePropertyChange(index, 'address', e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm mb-3"
+                                    />
+
+                                    <div className="grid grid-cols-2 gap-3 mb-3">
+                                        <input
+                                            type="time"
+                                            value={property.visitTime}
+                                            onChange={(e) => handlePropertyChange(index, 'visitTime', e.target.value)}
+                                            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                        />
+                                        <input
+                                            type="text"
+                                            placeholder="연락처"
+                                            value={property.contact}
+                                            onChange={(e) => handlePropertyChange(index, 'contact', e.target.value)}
+                                            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                        />
+                                    </div>
+
+                                    <input
+                                        type="text"
+                                        placeholder="임대료 (예: 전세 5억, 월세 200/70)"
+                                        value={property.rent}
+                                        onChange={(e) => handlePropertyChange(index, 'rent', e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                    />
+
+                                    {/* 파싱된 추가 정보 표시 */}
+                                    {(property.rooms || property.direction || property.building) && (
+                                        <div className="mt-3 p-2 bg-blue-50 rounded text-xs text-gray-600">
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {property.rooms && <span>방 {property.rooms}개</span>}
+                                                {property.bathrooms && <span>욕실 {property.bathrooms}개</span>}
+                                                {property.direction && <span>{property.direction}</span>}
+                                                {property.building && <span>{property.building}</span>}
+                                                {property.floor && property.totalFloor && <span>{property.floor}/{property.totalFloor}</span>}
+                                                {property.agencyName && <span>{property.agencyName}</span>}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* 붙여넣기 모달 */}
+                    {showPasteModal && (
+                        <PropertyPasteModal 
+                            onClose={() => {
+                                setShowPasteModal(false);
+                                setEditingPropertyIndex(null);
+                            }}
+                            onParse={handleParsedData}
+                        />
+                    )}
+                </div>
+            );
+        }
+        
+        // 나머지 컴포넌트들 (MeetingDetail, MessageModal, ReportModal, NotesModal)은 이전과 동일
+        function MeetingDetail({ meetingId, meeting, onBack, onEdit, onUpdate }) {
+            const [showMessageModal, setShowMessageModal] = useState(false);
+            const [showReportModal, setShowReportModal] = useState(false);
+            const [editingProperty, setEditingProperty] = useState(null);
+            const [propertyNotes, setPropertyNotes] = useState('');
+            const [customerReaction, setCustomerReaction] = useState('');
+
+            if (!meeting) {
+                return (
+                    <div className="max-w-md mx-auto bg-white min-h-screen flex items-center justify-center">
+                        <p className="text-gray-400">미팅을 찾을 수 없습니다</p>
+                    </div>
+                );
+            }
+
+            const formatDate = (dateString) => {
+                const date = new Date(dateString);
+                return `${date.getMonth() + 1}월 ${date.getDate()}일`;
+            };
+
+            const getStatusColor = (status) => {
+                switch (status) {
+                    case '볼수있음':
+                        return 'text-green-600';
+                    case '확인중':
+                        return 'text-orange-500';
+                    case '보류':
+                        return 'text-red-500';
+                    case '확인전':
+                        return 'text-gray-500';
+                    default:
+                        return 'text-gray-400';
+                }
+            };
+
+            const handleCall = (phone) => {
+                if (phone) {
+                    window.location.href = `tel:${phone}`;
+                }
+            };
+
+            const handleStatusChange = (propertyId, newStatus) => {
+                const updatedMeeting = {
+                    ...meeting,
+                    properties: meeting.properties.map(prop =>
+                        prop.id === propertyId ? { ...prop, status: newStatus } : prop
+                    )
+                };
+                onUpdate(updatedMeeting);
+            };
+
+            const handleEditNotes = (property) => {
+                setEditingProperty(property);
+                setPropertyNotes(Array.isArray(property.notes) ? property.notes.join(', ') : property.notes || '');
+                setCustomerReaction(property.customerReaction || '');
+            };
+
+            const handleSaveNotes = () => {
+                if (editingProperty) {
+                    const updatedMeeting = {
+                        ...meeting,
+                        properties: meeting.properties.map(prop =>
+                            prop.id === editingProperty.id 
+                                ? { 
+                                    ...prop, 
+                                    notes: propertyNotes.split(',').map(note => note.trim()).filter(note => note),
+                                    customerReaction: customerReaction
+                                } 
+                                : prop
+                        )
+                    };
+                    onUpdate(updatedMeeting);
+                    setEditingProperty(null);
+                    setPropertyNotes('');
+                    setCustomerReaction('');
+                }
+            };
+
+            return (
+                <div className="max-w-md mx-auto bg-white min-h-screen">
+                    {/* 헤더 */}
+                    <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                        <div className="flex items-center space-x-3">
+                            <button 
+                                onClick={onBack}
+                                className="text-blue-600 font-semibold text-lg"
+                            >
+                                ←
+                            </button>
+                            <div>
+                                <h1 className="font-semibold text-gray-800">{meeting.customerName}님 미팅</h1>
+                                <p className="text-sm text-gray-500">
+                                    {formatDate(meeting.date)} • {meeting.purpose}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex space-x-2">
+                            <button 
+                                onClick={() => setShowMessageModal(true)}
+                                className="text-green-600 text-sm font-medium"
+                            >
+                                문자
+                            </button>
+                            <button 
+                                onClick={onEdit}
+                                className="text-blue-600 font-medium"
+                            >
+                                편집
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* 매물 리스트 */}
+                    <div className="p-4 space-y-4 pb-20">
+                        {meeting.properties.map((property, index) => (
+                            <div key={property.id} className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                                <div className="flex items-start justify-between mb-3">
+                                    <div>
+                                        <h3 className="font-medium text-gray-800">
+                                            {property.name} {property.area_pyeong}평
+                                        </h3>
+                                        <p className="text-sm text-gray-500">
+                                            {property.address} • {property.visitTime}
+                                        </p>
+                                        <p className="text-sm text-gray-500">
+                                            {property.rent}
+                                        </p>
+                                        
+                                        {/* 상세 정보 표시 */}
+                                        {(property.rooms || property.direction || property.building) && (
+                                            <div className="mt-2 text-xs text-gray-400 space-x-2">
+                                                {property.rooms && <span>방{property.rooms}</span>}
+                                                {property.bathrooms && <span>욕실{property.bathrooms}</span>}
+                                                {property.direction && <span>{property.direction}</span>}
+                                                {property.building && <span>{property.building}</span>}
+                                                {property.floor && property.totalFloor && <span>{property.floor}/{property.totalFloor}</span>}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <select
+                                        value={property.status}
+                                        onChange={(e) => handleStatusChange(property.id, e.target.value)}
+                                        className={`text-sm font-medium border-none bg-transparent ${getStatusColor(property.status)} focus:outline-none`}
+                                    >
+                                        <option value="확인전">확인전</option>
+                                        <option value="확인중">확인중</option>
+                                        <option value="볼수있음">볼수있음</option>
+                                        <option value="보류">보류</option>
+                                    </select>
+                                </div>
+
+                                {/* 연락처 */}
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="text-sm text-gray-500">
+                                        {property.agencyName || property.contactType}: {property.contact}
+                                    </div>
+                                    <button
+                                        onClick={() => handleCall(property.contact)}
+                                        className="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
+                                    >
+                                        전화
+                                    </button>
+                                </div>
+
+                                {/* 메모 및 고객 반응 */}
+                                <div className="border-t border-gray-200 pt-3 mt-3">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <p className="text-xs text-gray-500 font-medium">현장 기록</p>
+                                        <button
+                                            onClick={() => handleEditNotes(property)}
+                                            className="text-blue-600 text-xs"
+                                        >
+                                            편집
+                                        </button>
+                                    </div>
+                                    
+                                    {Array.isArray(property.notes) && property.notes.length > 0 && (
+                                        <div className="mb-2">
+                                            <p className="text-xs text-gray-500 font-medium mb-1">메모</p>
+                                            {property.notes.map((note, noteIndex) => (
+                                                <p key={noteIndex} className="text-sm text-gray-800">• {note}</p>
+                                            ))}
+                                        </div>
+                                    )}
+                                    
+                                    {property.customerReaction && (
+                                        <div>
+                                            <p className="text-xs text-gray-500 font-medium mb-1">고객 반응</p>
+                                            <p className="text-sm text-gray-800">{property.customerReaction}</p>
+                                        </div>
+                                    )}
+                                    
+                                    {(!Array.isArray(property.notes) || property.notes.length === 0) && !property.customerReaction && (
+                                        <p className="text-sm text-gray-400">현장 기록이 없습니다</p>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* 하단 버튼 */}
+                    <div className="fixed bottom-0 left-1/2 transform -translate-x-1/2 w-full max-w-md bg-white border-t border-gray-100 p-4">
+                        <button 
+                            onClick={() => setShowReportModal(true)}
+                            className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700"
+                        >
+                            보고서 생성
+                        </button>
+                    </div>
+
+                    {/* 문자 템플릿 모달 */}
+                    {showMessageModal && (
+                        <MessageModal 
+                            onClose={() => setShowMessageModal(false)}
+                            meeting={meeting}
+                        />
+                    )}
+
+                    {/* 보고서 미리보기 모달 */}
+                    {showReportModal && (
+                        <ReportModal 
+                            onClose={() => setShowReportModal(false)}
+                            meeting={meeting}
+                        />
+                    )}
+
+                    {/* 메모 편집 모달 */}
+                    {editingProperty && (
+                        <NotesModal 
+                            property={editingProperty}
+                            notes={propertyNotes}
+                            reaction={customerReaction}
+                            onNotesChange={setPropertyNotes}
+                            onReactionChange={setCustomerReaction}
+                            onSave={handleSaveNotes}
+                            onClose={() => setEditingProperty(null)}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        // 다른 모달 컴포넌트들도 동일하게 유지
+        function MessageModal({ onClose, meeting }) {
+            const handleSendMessage = (template) => {
+                const message = template.message.replace('OOO부동산', '미팅노트부동산');
+                alert(`문자 전송:\n수신: ${meeting.properties[0]?.contact}\n내용: ${message}`);
+                onClose();
+            };
+
+            return (
+                <div className="fixed inset-0 modal-backdrop flex items-end justify-center z-50">
+                    <div className="bg-white rounded-t-lg w-full max-w-md max-h-96 overflow-y-auto">
+                        <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                            <h3 className="text-lg font-semibold text-gray-800">문자 템플릿</h3>
+                            <button 
+                                onClick={onClose}
+                                className="text-gray-500 hover:text-gray-700"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <div className="p-4 space-y-3">
+                            {messageTemplates.map(template => (
+                                <div key={template.id} className="border border-gray-200 rounded-lg p-3">
+                                    <h4 className="font-medium text-gray-800 mb-1">{template.name}</h4>
+                                    <p className="text-sm text-gray-600 mb-3">{template.message}</p>
+                                    <button 
+                                        onClick={() => handleSendMessage(template)}
+                                        className="w-full bg-green-600 text-white py-2 rounded-md text-sm hover:bg-green-700"
+                                    >
+                                        전송
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function ReportModal({ onClose, meeting }) {
+            const formatDate = (dateString) => {
+                const date = new Date(dateString);
+                return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`;
+            };
+
+            const handleShare = () => {
+                if (navigator.share) {
+                    navigator.share({
+                        title: `${meeting.customerName}님 미팅 보고서`,
+                        text: `${formatDate(meeting.date)} 미팅 결과를 공유합니다.`
+                    });
+                } else {
+                    alert('보고서가 갤러리에 저장되었습니다.');
+                }
+                onClose();
+            };
+
+            return (
+                <div className="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg w-full max-w-sm max-h-96 overflow-y-auto">
+                        <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                            <h3 className="text-lg font-semibold text-gray-800">보고서 미리보기</h3>
+                            <button 
+                                onClick={onClose}
+                                className="text-gray-500 hover:text-gray-700"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        
+                        <div className="p-4 bg-gray-50 text-sm">
+                            <div className="bg-white p-3 rounded border text-center">
+                                <h2 className="font-bold text-lg mb-3">미팅 보고서</h2>
+                                <p className="text-gray-600 mb-4">
+                                    {meeting.customerName}님 • {formatDate(meeting.date)}
+                                </p>
+                                
+                                {meeting.properties.map((property, index) => (
+                                    <div key={property.id} className="text-left mb-3 pb-3 border-b border-gray-100 last:border-b-0">
+                                        <h4 className="font-semibold">{property.name} {property.area_pyeong}평</h4>
+                                        <p className="text-gray-600 text-xs">{property.address}</p>
+                                        <p className="text-gray-600 text-xs">{property.rent}</p>
+                                        
+                                        {/* 상세 정보 */}
+                                        {(property.rooms || property.direction) && (
+                                            <p className="text-gray-600 text-xs">
+                                                {property.rooms && `방${property.rooms}개 `}
+                                                {property.bathrooms && `욕실${property.bathrooms}개 `}
+                                                {property.direction && `${property.direction} `}
+                                                {property.building && `${property.building} `}
+                                                {property.floor && property.totalFloor && `${property.floor}/${property.totalFloor}`}
+                                            </p>
+                                        )}
+                                        
+                                        {Array.isArray(property.notes) && property.notes.length > 0 && (
+                                            <div className="mt-2">
+                                                <p className="text-xs font-medium">메모:</p>
+                                                {property.notes.map((note, i) => (
+                                                    <p key={i} className="text-xs text-gray-700">• {note}</p>
+                                                ))}
+                                            </div>
+                                        )}
+                                        
+                                        {property.customerReaction && (
+                                            <p className="text-xs mt-1">
+                                                <span className="font-medium">고객 반응:</span> {property.customerReaction}
+                                            </p>
+                                        )}
+                                    </div>
+                                ))}
+                                
+                                <p className="text-xs text-gray-500 mt-4">
+                                    미팅노트 앱으로 작성됨
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <div className="p-4 border-t border-gray-100">
+                            <button 
+                                onClick={handleShare}
+                                className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700"
+                            >
+                                공유하기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function NotesModal({ property, notes, reaction, onNotesChange, onReactionChange, onSave, onClose }) {
+            return (
+                <div className="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg w-full max-w-sm">
+                        <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                            <h3 className="text-lg font-semibold text-gray-800">현장 기록 편집</h3>
+                            <button 
+                                onClick={onClose}
+                                className="text-gray-500 hover:text-gray-700"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        
+                        <div className="p-4 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    메모 (쉼표로 구분)
+                                </label>
+                                <textarea
+                                    value={notes}
+                                    onChange={(e) => onNotesChange(e.target.value)}
+                                    placeholder="채광 좋음, 리모델링 깔끔함"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    rows="3"
+                                />
+                            </div>
+                            
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    고객 반응
+                                </label>
+                                <input
+                                    type="text"
+                                    value={reaction}
+                                    onChange={(e) => onReactionChange(e.target.value)}
+                                    placeholder="매우 만족, 관심 있음"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                        </div>
+                        
+                        <div className="p-4 border-t border-gray-100 flex space-x-3">
+                            <button 
+                                onClick={onClose}
+                                className="flex-1 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                            >
+                                취소
+                            </button>
+                            <button 
+                                onClick={onSave}
+                                className="flex-1 bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700"
+                            >
+                                저장
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
