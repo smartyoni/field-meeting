@@ -8,12 +8,12 @@ import { getStorage } from "firebase/storage";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyCGPc7bVMr79ajAiCaVk4kXhdSDhY0RgHk",
+  authDomain: "field-meeting.firebaseapp.com",
+  projectId: "field-meeting",
+  storageBucket: "field-meeting.firebasestorage.app",
+  messagingSenderId: "360592747342",
+  appId: "1:360592747342:web:abab50459ed433987d4c1f"
 };
 
 // Initialize Firebase
