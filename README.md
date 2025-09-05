@@ -32,7 +32,10 @@
 
 ## 📱 실행 방법
 
-### 현재 프로토타입 확인
+### 🌐 온라인에서 바로 사용
+**GitHub Pages**: https://smartyoni.github.io/field-meeting/
+
+### 💻 로컬에서 실행
 ```bash
 # 브라우저에서 바로 실행
 index.html 파일을 브라우저에서 열기
